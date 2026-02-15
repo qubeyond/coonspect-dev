@@ -1,0 +1,7 @@
+# MongoDB Settings
+MONGO_TIMEOUT_MS = 5000
+MONGO_LECTURES_COLLECTION = "lectures"
+
+# Pagination Defaults
+DEFAULT_LIMIT = 10
+DEFAULT_OFFSET = 0
