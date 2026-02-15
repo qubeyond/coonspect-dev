@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 
 @dataclass(kw_only=True)
@@ -8,7 +9,7 @@ class Lecture:
     author_id: str | None = None
 
     title: str
-    content: dict[str, any]
+    content: dict[str, Any]
     tags: list[str] = field(default_factory=list)
 
     created_at: datetime = field(default_factory=datetime.now)
