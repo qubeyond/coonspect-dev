@@ -1,0 +1,15 @@
+services:
+  mongodb_test:
+    image: mongo:latest
+    container_name: coonspect_db_test
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS}
+    ports:
+      - "${MONGO_PORT_EXTERNAL}:${MONGO_PORT_INTERNAL}"
+
+  redis_test:
+    image: redis:7-alpine
+    container_name: coonspect_redis_test
+    ports:
+      - "${REDIS_PORT_EXTERNAL}:${REDIS_PORT_INTERNAL}"

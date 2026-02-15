@@ -1,13 +1,36 @@
-# Python-generated files
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+*.py[cod]
+*$py.class
 
-# Virtual environments
-.venv
+# Environments
+.venv/
+env/
+venv/
+ENV/
 
-# Env
+# Project-specific (Uv / Ruff / Mypy)
+.python-version
+.ruff_cache/
+.mypy_cache/
+uv.lock
+
+# Env files 
 .env
+.env.local
+.env.*.local
+# .env.test
+
+# Test / Coverage
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+tests/.pytest_cache/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS files
+.DS_Store

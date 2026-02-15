@@ -12,6 +12,8 @@ class Lecture:
     content: dict[str, Any]
     tags: list[str] = field(default_factory=list)
 
+    status: str = "pending"
+
     created_at: datetime = field(default_factory=datetime.now)
     updated_at: datetime = field(default_factory=datetime.now)
 
@@ -30,5 +32,5 @@ class Lecture:
             self.content = content
         if tags is not None:
             self.tags = tags
-        
+
         self.updated_at = datetime.now()
