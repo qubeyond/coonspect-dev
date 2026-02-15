@@ -1,0 +1,19 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: coonspect_api
+    restart: always
+    ports:
+      - "${EXTERNAL_PORT}:${INTERNAL_PORT}"
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+    networks:
+      - coonspect_test_network
+
+networks:
+  coonspect_test_network:
+    driver: bridge
