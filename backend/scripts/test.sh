@@ -2,6 +2,9 @@
 set -e
 cd "$(dirname "$0")/.."
 
+echo "Syncing dependencies..."
+uv sync --all-extras
+
 echo "Starting test infrastructure..."
 docker compose -p coonspect_test --env-file ../.env.test -f ../docker-compose.test.yml up -d --force-recreate
 

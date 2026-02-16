@@ -2,125 +2,102 @@ from typing import Any
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from pymongo.errors import PyMongoError
 
 from app.common.constants import MONGO_LECTURES_COLLECTION
-from app.domain.entities.lecture import Lecture
+from app.domain.entities.lecture import Lecture, LectureStatus
+from app.domain.entities.value_objects import (
+    AuthorId,
+    LectureId,
+    Tag,
+    Title,
+    Transcript,
+)
 from app.domain.interfaces.lecture_repo import ILectureRepository
 
 
 class MongoLectureRepository(ILectureRepository):
     def __init__(self, db: AsyncIOMotorDatabase[Any]) -> None:
         self._db = db
-        self._collection_name = MONGO_LECTURES_COLLECTION
+        self._collection = db[MONGO_LECTURES_COLLECTION]
 
-    @property
-    def collection(self) -> Any:
-        return self._db[self._collection_name]
+    async def add(self, lecture: Lecture) -> LectureId:
+        doc = self._entity_to_doc(lecture)
+        result = await self._collection.insert_one(doc)
+        return LectureId(str(result.inserted_id))
 
-    # WRITE
+    async def save(self, lecture: Lecture) -> None:
+        if not lecture.id or not ObjectId.is_valid(lecture.id.value):
+            raise ValueError("Entity must have a valid ID to be saved")
 
-    async def create(self, lecture: Lecture) -> str:
-        doc: dict[str, Any] = {
-            "title": lecture.title,
-            "content": lecture.content,
-            "author_id": lecture.author_id,
-            "tags": lecture.tags,
-            "status": getattr(lecture, "status", "pending"),
-            "created_at": lecture.created_at,
-            "updated_at": lecture.updated_at,
-        }
+        doc = self._entity_to_doc(lecture)
+        await self._collection.replace_one({"_id": ObjectId(lecture.id.value)}, doc)
 
-        try:
-            result = await self.collection.insert_one(doc)
-            return str(result.inserted_id)
+    async def delete(self, lecture_id: LectureId) -> bool:
+        if not ObjectId.is_valid(lecture_id.value):
+            return False
 
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error creating lecture: {e}")
-            raise
+        result = await self._collection.delete_one({"_id": ObjectId(lecture_id.value)})
+        return result.deleted_count > 0
 
-    # READ
-
-    async def get_by_id(self, lecture_id: str) -> Lecture | None:
-        if not ObjectId.is_valid(lecture_id):
+    async def find_by_id(self, lecture_id: LectureId) -> Lecture | None:
+        if not ObjectId.is_valid(lecture_id.value):
             return None
 
-        try:
-            doc = await self.collection.find_one({"_id": ObjectId(lecture_id)})
-            return self._map_to_entity(doc) if doc else None
+        doc = await self._collection.find_one({"_id": ObjectId(lecture_id.value)})
+        return self._map_to_entity(doc) if doc else None
 
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error fetching lecture {lecture_id}: {e}")
-            return None
-
-    async def find_many(
-        self, *, limit: int = 10, offset: int = 0, author_id: str | None = None
+    async def find_all(
+        self, *, limit: int = 10, offset: int = 0, author_id: AuthorId | None = None
     ) -> list[Lecture]:
-        query = {"author_id": author_id} if author_id else {}
-        try:
-            cursor = self.collection.find(query).skip(offset).limit(limit)
-            return [self._map_to_entity(doc) async for doc in cursor]
+        query = {"author_id": author_id.value} if author_id else {}
+        cursor = self._collection.find(query).skip(offset).limit(limit)
+        return [self._map_to_entity(doc) async for doc in cursor]
 
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error finding lectures: {e}")
-            return []
+    async def count(self, author_id: AuthorId | None = None) -> int:
+        query = {"author_id": author_id.value} if author_id else {}
+        return await self._collection.count_documents(query)
 
-    async def count(self, author_id: str | None = None) -> int:
-        query = {"author_id": author_id} if author_id else {}
-        try:
-            result = await self.collection.count_documents(query)
-            return int(result)
+    # Helpers
 
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error counting lectures: {e}")
-            return 0
-
-    # UPDATE/DELETE
-
-    async def update(self, lecture: Lecture) -> None:
-        if not lecture.id or not ObjectId.is_valid(lecture.id):
-            return
-
-        update_data: dict[str, Any] = {
-            "title": lecture.title,
-            "content": lecture.content,
-            "author_id": lecture.author_id,
-            "tags": lecture.tags,
-            "status": getattr(lecture, "status", "pending"),
+    def _entity_to_doc(self, lecture: Lecture) -> dict[str, Any]:
+        return {
+            "title": lecture.title.value,
+            "author_id": lecture.author_id.value,
+            "status": str(lecture.status),
+            "tags": [tag.value for tag in lecture.tags],
+            "transcript": {
+                "text": lecture.content.text,
+                "language": lecture.content.language,
+                "confidence": lecture.content.confidence,
+            }
+            if lecture.content
+            else None,
+            "registered_at": lecture.registered_at,
             "updated_at": lecture.updated_at,
+            "published_at": lecture.published_at,
         }
-
-        try:
-            await self.collection.update_one(
-                {"_id": ObjectId(lecture.id)}, {"$set": update_data}
-            )
-
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error updating lecture {lecture.id}: {e}")
-            raise
-
-    async def delete(self, lecture_id: str) -> bool:
-        if not ObjectId.is_valid(lecture_id):
-            return False
-
-        try:
-            result = await self.collection.delete_one({"_id": ObjectId(lecture_id)})
-            return bool(result.deleted_count > 0)
-
-        except PyMongoError as e:  # pragma: no cover
-            print(f"Error deleting lecture {lecture_id}: {e}")
-            return False
-
-    # HELPERS
 
     def _map_to_entity(self, doc: dict[str, Any]) -> Lecture:
+        transcript_data = doc.get("transcript")
+
+        transcript = (
+            Transcript(
+                text=transcript_data["text"],
+                language=transcript_data.get("language"),
+                confidence=transcript_data.get("confidence"),
+            )
+            if transcript_data
+            else None
+        )
+
         return Lecture(
-            id=str(doc["_id"]),
-            title=doc["title"],
-            content=doc["content"],
-            author_id=doc.get("author_id"),
-            tags=doc.get("tags", []),
-            status=doc.get("status", "pending"),
-            created_at=doc["created_at"],
+            id=LectureId(str(doc["_id"])),
+            author_id=AuthorId(doc["author_id"]),
+            title=Title(doc["title"]),
+            content=transcript,
+            tags=frozenset(Tag(t) for t in doc.get("tags", [])),
+            status=LectureStatus(doc["status"]),
+            registered_at=doc["registered_at"],
             updated_at=doc["updated_at"],
+            published_at=doc.get("published_at"),
         )

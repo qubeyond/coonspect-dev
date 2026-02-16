@@ -1,90 +1,85 @@
+from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from dishka.integrations.fastapi import FromDishka, inject
+from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import get_lecture_repository
-from app.api.v1.schemas.lecture import (
-    LectureCreate,
-    LectureRead,
-    LectureStatus,
-    LectureUpdate,
-)
+from app.api.v1.schemas.lecture import LectureCreate, LectureRead, LectureUpdate
 from app.domain.entities.lecture import Lecture
+from app.domain.entities.value_objects import (
+    AuthorId,
+    LectureId,
+    Tag,
+    Title,
+)
 from app.domain.interfaces.lecture_repo import ILectureRepository
 from app.tasks.lecture import process_lecture_task
 
 router = APIRouter()
 
 
-# CREATE
-
-
 @router.post("/", response_model=LectureRead, status_code=status.HTTP_201_CREATED)
+@inject
 async def create_lecture(
-    data: LectureCreate, repo: ILectureRepository = Depends(get_lecture_repository)
+    data: LectureCreate, repo: FromDishka[ILectureRepository]
 ) -> Any:
+    now = datetime.now()
+
     new_lecture = Lecture(
-        title=data.title,
-        content=data.content,
-        author_id=data.author_id,
-        tags=data.tags,
-        status=LectureStatus.PENDING.value,
+        author_id=AuthorId(data.author_id),
+        title=Title(data.title),
+        content=None,
+        tags=frozenset(Tag(t) for t in data.tags),
+        registered_at=now,
+        updated_at=now,
     )
 
-    lecture_id = await repo.create(new_lecture)
+    lecture_id = await repo.add(new_lecture)
 
-    await process_lecture_task.kiq(str(lecture_id))
+    await process_lecture_task.kiq(lecture_id.value)  # type: ignore[call-overload]
 
-    return await repo.get_by_id(lecture_id)
-
-
-# READ
+    created = await repo.find_by_id(lecture_id)
+    return created
 
 
 @router.get("/", response_model=list[LectureRead])
-async def list_lectures(
-    repo: ILectureRepository = Depends(get_lecture_repository),
-) -> Any:
-    return await repo.find_many()
+@inject
+async def list_lectures(repo: FromDishka[ILectureRepository]) -> Any:
+    return await repo.find_all()
 
 
 @router.get("/{lecture_id}", response_model=LectureRead)
-async def get_lecture(
-    lecture_id: str, repo: ILectureRepository = Depends(get_lecture_repository)
-) -> Any:
-    lecture = await repo.get_by_id(lecture_id)
+@inject
+async def get_lecture(lecture_id: str, repo: FromDishka[ILectureRepository]) -> Any:
+    lecture = await repo.find_by_id(LectureId(lecture_id))
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
     return lecture
-
-
-# UPDATE
 
 
 @router.patch("/{lecture_id}", response_model=LectureRead)
+@inject
 async def update_lecture(
     lecture_id: str,
     data: LectureUpdate,
-    repo: ILectureRepository = Depends(get_lecture_repository),
+    repo: FromDishka[ILectureRepository],
 ) -> Any:
-    lecture = await repo.get_by_id(lecture_id)
+    lecture = await repo.find_by_id(LectureId(lecture_id))
     if not lecture:
         raise HTTPException(status_code=404, detail="Lecture not found")
 
-    update_dict = data.model_dump(exclude_unset=True)
-    for key, value in update_dict.items():
-        setattr(lecture, key, value)
+    lecture.update_info(
+        at=datetime.now(),
+        title=Title(data.title) if data.title else None,
+        tags=frozenset(Tag(t) for t in data.tags) if data.tags is not None else None,
+    )
 
-    await repo.update(lecture)
+    await repo.save(lecture)
     return lecture
 
 
-# DELETE
-
-
 @router.delete("/{lecture_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_lecture(
-    lecture_id: str, repo: ILectureRepository = Depends(get_lecture_repository)
-) -> None:
-    if not await repo.delete(lecture_id):
+@inject
+async def delete_lecture(lecture_id: str, repo: FromDishka[ILectureRepository]) -> None:
+    if not await repo.delete(LectureId(lecture_id)):
         raise HTTPException(status_code=404, detail="Lecture not found")

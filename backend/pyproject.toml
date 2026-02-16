@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
     "celery>=5.6.2",
+    "dishka[pytest]>=1.8.0",
     "fastapi[standard]>=0.129.0",
     "motor>=3.7.1",
     "pydantic-settings>=2.13.0",

@@ -1,36 +1,73 @@
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from enum import StrEnum
+
+from app.domain.entities.value_objects import (
+    AuthorId,
+    InvalidStateTransitionError,
+    LectureId,
+    Tag,
+    Title,
+    Transcript,
+)
+
+
+class LectureStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 @dataclass(kw_only=True)
 class Lecture:
-    id: str | None = None
-    author_id: str | None = None
+    id: LectureId | None = None
+    author_id: AuthorId
 
-    title: str
-    content: dict[str, Any]
-    tags: list[str] = field(default_factory=list)
+    title: Title
+    content: Transcript | None = None
+    tags: frozenset[Tag] = field(default_factory=frozenset)
 
-    status: str = "pending"
+    status: LectureStatus = LectureStatus.PENDING
 
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
+    registered_at: datetime
+    updated_at: datetime
+    published_at: datetime | None = None
 
-    def update(
+    def start_processing(self, at: datetime) -> None:
+        if self.status not in (LectureStatus.PENDING, LectureStatus.FAILED):
+            raise InvalidStateTransitionError(
+                f"Cannot start processing from {self.status}"
+            )
+
+        self.status = LectureStatus.PROCESSING
+        self.updated_at = at
+
+    def complete(self, transcript: Transcript, at: datetime) -> None:
+        """Принимаем объект Transcript, а не dict"""
+        if self.status != LectureStatus.PROCESSING:
+            raise InvalidStateTransitionError(
+                "Can only complete from processing status"
+            )
+
+        self.content = transcript
+        self.status = LectureStatus.COMPLETED
+        self.published_at = at
+        self.updated_at = at
+
+    def fail(self, at: datetime) -> None:
+        self.status = LectureStatus.FAILED
+        self.updated_at = at
+
+    def update_info(
         self,
-        *,
-        title: str | None = None,
-        content: dict[str, Any] | None = None,
-        tags: list[str] | None = None,
+        at: datetime,
+        title: Title | None = None,
+        tags: frozenset[Tag] | None = None,
     ) -> None:
-        """Универсальный метод обновления."""
-
-        if title is not None:
+        """Обновляем метаданные, используя строгие типы"""
+        if title:
             self.title = title
-        if content is not None:
-            self.content = content
         if tags is not None:
             self.tags = tags
-
-        self.updated_at = datetime.now()
+        self.updated_at = at

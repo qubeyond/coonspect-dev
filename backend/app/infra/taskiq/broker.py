@@ -1,23 +1,11 @@
-import taskiq_fastapi
-from taskiq import TaskiqEvents, TaskiqState
+from dishka import make_async_container
+from dishka.integrations.taskiq import setup_dishka
 from taskiq_redis import ListQueueBroker
 
 from app.common.settings import settings
-from app.infra.mongo.client import mongo_client
+from app.infra.ioc import AppProvider
 
+container = make_async_container(AppProvider())
 broker = ListQueueBroker(str(settings.redis_url))
 
-
-@broker.on_event(TaskiqEvents.WORKER_STARTUP)
-async def worker_startup(state: TaskiqState) -> None:
-    await mongo_client.connect()
-    print("WORKER: Connected to MongoDB")
-
-
-@broker.on_event(TaskiqEvents.WORKER_SHUTDOWN)
-async def worker_shutdown(state: TaskiqState) -> None:
-    mongo_client.close()
-    print("WORKER: Closed MongoDB connection")
-
-
-taskiq_fastapi.init(broker, "app.main:app")
+setup_dishka(container, broker)
