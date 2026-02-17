@@ -29,6 +29,27 @@ services:
     networks:
       - coonspect_network
 
+  stt-worker:
+    build: ./stt-service
+    container_name: coonspect_stt_worker
+    # Запуск будет управляться через CMD в Dockerfile (app.main)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    env_file:
+      - .env
+    volumes:
+      - ./stt-service/app:/app/app
+      - huggingface_cache:/root/.cache/huggingface
+    depends_on:
+      - redis
+    networks:
+      - coonspect_network
+
   mongodb:
     image: mongo:latest
     container_name: coonspect_db
@@ -57,3 +78,4 @@ networks:
 
 volumes:
   mongodb_data:
+  huggingface_cache:
